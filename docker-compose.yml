@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: resonate
+      POSTGRES_PASSWORD: resonate
+      POSTGRES_DB: resonate
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resonate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  resonate:
+    image: resonatehqio/resonate:v0.9.8
+    ports:
+      - "8001:8001"
+      - "9091:9090" # metrics; host port shifted so Prometheus can keep 9090
+    environment:
+      RESONATE_SERVER__BIND: "0.0.0.0"
+      RESONATE_STORAGE__TYPE: postgres
+      RESONATE_STORAGE__POSTGRES__URL: postgres://resonate:resonate@postgres:5432/resonate
+      RESONATE_STORAGE__POSTGRES__POOL_SIZE: 20
+      RESONATE_TASKS__RETRY_TIMEOUT: 500
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: "postgresql://resonate:resonate@postgres:5432/resonate?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - resonate
+      - postgres-exporter
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  grafana-data:
