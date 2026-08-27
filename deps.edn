@@ -1,6 +1,9 @@
 {:paths ["src" "resources"]
+ 
  :deps {org.clojure/clojure {:mvn/version "1.13.0-alpha6"}
+        metosin/jsonista {:mvn/version "0.3.13"}
         io.resonatehq/resonate-sdk-java {:mvn/version "0.1.1"}}
+ 
  :aliases
  {:dev {:extra-paths ["dev"]
         :extra-deps {org.clojure/tools.namespace {:mvn/version "1.5.1"}}}

@@ -21,6 +21,13 @@
   (-> (r/run-in ctx #'format-greeting name)
       (r/await)))
 
+(defn rpc-workflow
+  "The same shape as `greeter-workflow`, but dispatching the child over the wire rather
+  than running it inline on this instance."
+  [ctx name]
+  (-> (r/rpc-in ctx #'format-greeting name)
+      (r/await)))
+
 (def ^:dynamic *resonate* nil)
 
 (defn with-resonate
@@ -31,6 +38,7 @@
       (r/register engine #'format-greeting {:name "format-greeting"
                                             :retry (Retry$Never.)})
       (r/register engine #'greeter-workflow)
+      (r/register engine #'rpc-workflow)
       (binding [*resonate* engine] (f))
       (finally (r/stop! engine)))))
 
@@ -61,3 +69,40 @@
     (is (= "hello, by-fn!"
            (-> (r/run *resonate* (r/id) greeter-workflow "by-fn")
                (r/result))))))
+
+;; -- rpc ----------------------------------------------------------------------
+;;
+;; `run` executes here; `rpc` hands the task to whichever worker claims it. With one
+;; instance registered that is this process again, so these assert the dispatch path
+;; rather than distribution.
+
+(deftest rpc-by-var
+  (testing "rpc dispatches a registered function named by its var"
+    (is (= "hello, Dominik!"
+           (-> (r/rpc *resonate* (r/id "rpc-") #'format-greeting "Dominik")
+               (r/result))))))
+
+(deftest rpc-by-name
+  (testing "rpc takes a String, which need not be registered locally to be dispatched"
+    (is (= "hello, by-name!"
+           (-> (r/rpc *resonate* (r/id) "format-greeting" "by-name")
+               (r/result))))))
+
+(deftest rpc-in-child
+  (testing "a workflow dispatches a child over the wire and awaits it"
+    (is (= "hello, Echo!"
+           (-> (r/run *resonate* (r/id) #'rpc-workflow "Echo")
+               (r/result))))))
+
+(deftest rpc-same-id-rejoins
+  (testing "reusing a promise id rejoins rather than dispatching again"
+    (let [id (r/id "rpc-rejoin")
+          once (-> (r/rpc *resonate* id #'format-greeting "first") (r/result))
+          twice (-> (r/rpc *resonate* id #'format-greeting "second") (r/result))]
+      (is (= "hello, first!" once))
+      (is (= once twice)))))
+
+(deftest rpc-unregistered-fn-is-rejected
+  (testing "a var carries no name of its own on the wire, so it must be registered here"
+    (let [unregistered (fn [_ctx x] x)]
+      (is (thrown? Exception (r/rpc *resonate* (r/id) unregistered "x"))))))

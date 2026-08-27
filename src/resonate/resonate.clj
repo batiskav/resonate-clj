@@ -2,10 +2,15 @@
   (:refer-clojure :exclude [await])
   (:require
    [clojure.string :as str])
-  (:import [io.resonatehq.resonate Codec$Encryptor Context Context$ResonateFuture
-            Handle$ResonateHandle Heartbeat$Hb Network Registry Registry$NameVersion
+  (:import [com.fasterxml.jackson.databind ObjectMapper]
+           [com.fasterxml.jackson.databind.module SimpleModule]
+           [jsonista.jackson FunctionalKeyDeserializer FunctionalKeywordSerializer
+            KeywordSerializer PersistentHashMapDeserializer PersistentVectorDeserializer
+            RatioSerializer SymbolSerializer]
+           [io.resonatehq.resonate Codec Codec$Encryptor Context Context$ResonateFuture
+            Handle$ResonateHandle Heartbeat$Hb Network Registry
             Resonate Resonate$Builder Retry$RetryPolicy]
-           [java.lang.reflect InvocationTargetException Method Modifier]
+           [java.lang.reflect InvocationTargetException Method Modifier Type]
            [java.time Duration]))
 
 (defn method-of
@@ -71,6 +76,16 @@
 (def m-run-method
   (let [param-types (into-array Class [Method ObjectArray])]
     (doto (.getDeclaredMethod Context "run" param-types)
+      (.setAccessible true))))
+
+(def m-rpc-resolved
+  (let [param-types (into-array Class [String String Integer/TYPE Type ObjectArray])]
+    (doto (.getDeclaredMethod Resonate "rpcResolved" param-types)
+      (.setAccessible true))))
+
+(def m-rpc-method
+  (let [param-types (into-array Class [Method ObjectArray])]
+    (doto (.getDeclaredMethod Context "rpc" param-types)
       (.setAccessible true))))
 
 (def f-state-registry
@@ -142,12 +157,14 @@
                       {:ref ?ref :method (str method)})))
     [(.name key) (.version key)]))
 
+(defn- kw->str ^String [k] (subs (str k) 1))
+
 (defn- coerce 
   "Coerces kw into str, var into fn. Returns input verbatim when out of options."
   [?ref]
   (cond
     (string? ?ref) (if (str/blank? ?ref) nil ?ref)
-    (keyword? ?ref) (subs (str ?ref) 1)
+    (keyword? ?ref) (kw->str ?ref)
     (var? ?ref) (deref ?ref)
     :else ?ref))
 
@@ -159,7 +176,7 @@
   (^Resonate [^Resonate R name] (unregister R name 1))
   (^Resonate [^Resonate R name version]
    (let [registry (.get f-registry R)
-         by-key ^java.util.Map (.get by-key-field registry)]
+         by-key (.get by-key-field registry)]
      (.remove by-key (->Key name version))
      R)))
 
@@ -179,20 +196,20 @@
 
    Without `:replace?`, throws `AlreadyRegisteredError` when this (name, version) is
    already registered -- re-evaluating a `defn` and registering it again counts."
-  (^Resonate [r ?ref] (register r ?ref nil))
-  (^Resonate [^Resonate r ?ref & {:keys [name version retry replace?] 
+  (^Resonate [^Resonate R ?ref] (register R ?ref nil))
+  (^Resonate [^Resonate R ?ref & {:keys [name version retry replace?] 
                                   :or {version 1} :as _opts}]
    (let [method (method-of ?ref)
          name (coerce name)
          name (if (string? name) name (fq-name ?ref))]
-     (when replace? (unregister r name version))
+     (when replace? (unregister R name version))
      (try
-       (let [registry (.get f-registry r)
+       (let [registry (.get f-registry R)
              args (object-array [name method (int version) retry])]
          (.invoke m-register registry args))
        (catch InvocationTargetException e 
          (throw (.getCause e)))) 
-     r)))
+     R)))
 
 (defn ->duration
   "A `java.time.Duration` from a Duration or a number of milliseconds."
@@ -231,19 +248,54 @@
   ([] (id "run-"))
   ([prefix] (str prefix "-" (System/nanoTime))))
 
+;; -- wire marshalling ---------------------------------------------------------
+;;
+;; Everything crossing the wire is JSON, and `Codec.decode` is `readValue(.., Object.class)`.
+;; A Clojure signature carries no declared parameter types, so `Durable` takes its passthrough
+;; branch and hands whatever that produced straight to the function -- which is why teaching
+;; the SDK's own mapper is what reaches a durable function's arguments. Nothing we could do at
+;; our own boundary gets there.
+;;
+;; `Codec.MAPPER` is private static final with no builder knob, so we reach it reflectively and
+;; register jsonista's Clojure codec on it: keywords, symbols and ratios out; persistent maps
+;; and vectors in. One hook, both directions, no hand-written serializers.
+
+(def ^:private mapper
+  (.get (doto (.getDeclaredField Codec "MAPPER") (.setAccessible true)) nil))
+
+(def ^:private sdk-error-keys
+  "The SDK reads its own error envelope back with String keys -- `map.get(\"message\")` in
+   `Codec/deserializeError` -- so these three must not become keywords, or a rejected promise
+   loses its cause and surfaces as \"unknown error\"."
+  #{"__type" "message" "__java_serialized"})
+
+(defn- decode-key [^String k]
+  (if (sdk-error-keys k) k (keyword k)))
+
+;; defonce: registering a module mutates shared state; a namespace reload must not repeat it.
+#_{:clj-kondo/ignore [:unused-private-var]}
+(defonce ^:private clojure-codec
+  (doto ^ObjectMapper mapper
+    (.registerModule
+     (doto (SimpleModule. "resonate-clj")
+       (.addSerializer clojure.lang.Keyword (KeywordSerializer. false))
+       (.addSerializer clojure.lang.Symbol (SymbolSerializer.))
+       (.addSerializer clojure.lang.Ratio (RatioSerializer.))
+       ;; Map keys take a separate path in Jackson; a value serializer never sees them.
+       (.addKeySerializer clojure.lang.Keyword (FunctionalKeywordSerializer. kw->str))
+       (.addKeyDeserializer Object (FunctionalKeyDeserializer. decode-key))
+       (.addDeserializer java.util.Map (PersistentHashMapDeserializer.))
+       (.addDeserializer java.util.List (PersistentVectorDeserializer.))))))
+
 (defn run-resolved
   [^Resonate R id name version args]
   (invoke! m-run-resolved R [id name (int version) (object-array args)]))
-
-(defn run-method
-  [^Context ctx ^Method method args]
-  (invoke! m-run-method ctx [method (object-array args)]))
 
 (defn run
   "Start a durable invocation from outside a workflow.
 
    Args:
-   r    - Resonate instance.
+   R    - Resonate instance.
    id   - promise ID String. Reusing an ID rejoins that promise instead of
           starting new work; `(id)` when a fresh run is wanted.
    ?ref - Something coerceable into a durable ref.
@@ -260,6 +312,10 @@
                    (run-resolved R id name version args))
       :else (throw (ex-info "R dispatch failed" {:ref ?ref})))))
 
+(defn run-method
+  [^Context ctx ^Method method args]
+  (invoke! m-run-method ctx [method (object-array args)]))
+
 (defn run-in
   "Run a durable function as a child of the workflow `ctx` belongs to.
 
@@ -271,7 +327,7 @@
    Takes no ID: child IDs come from call order, which is what makes replay
    deterministic. Returns a ResonateFuture, settled with `await`."
   ^Context$ResonateFuture [^Context ctx ?ref & args] 
-  (let [?ref (coerce ?ref)] 
+  (let [?ref (coerce ?ref)]
     (cond
       (string? ?ref) (.run ctx ?ref (object-array args))
       (fn? ?ref) (let [method (method-of ?ref)]
@@ -279,8 +335,69 @@
                    (run-method ctx method args))
       :else (throw (ex-info "Ctx dispatch failed}" {:ref ?ref})))))
 
-(defn await [^Context$ResonateFuture f] (.await f))
-(defn result [^Handle$ResonateHandle h] (.result h))
+(defn rpc-resolved
+  [^Resonate R id name version args]
+  (invoke! m-rpc-resolved R [id name (int version) Object (object-array args)]))
+
+(defn rpc
+  "Dispatch a durable invocation remotely, from outside a workflow.
+
+   Args:
+   R    - Resonate instance.
+   id   - promise ID String. Reusing an ID rejoins that promise instead of
+          starting new work; `(id)` when a fresh run is wanted.
+   ?ref - Something coerceable into a durable ref.
+   & args - Arguments to pass to the durable ref.
+
+   Unlike `run`, the callee does not execute here -- whichever worker in the target group
+   claims the task runs it, so a String names a function this process need not have. A var
+   or fn must be registered locally, since its name and version come from the reverse index.
+
+   Returns a ResonateHandle, settled with `result`."
+  ^Handle$ResonateHandle [^Resonate R ^String id ?ref & args]
+  (let [?ref (coerce ?ref)]
+    (cond
+      (string? ?ref) (.rpc R id ?ref (object-array args))
+      (fn? ?ref) (let [method (method-of ?ref) 
+                       [name version] (get-key R ?ref)]
+                   (check-arity! method args)
+                   (rpc-resolved R id name version args))
+      :else (throw (ex-info "R dispatch failed" {:ref ?ref})))))
+
+(defn rpc-method
+  [^Context ctx ^Method method args]
+  (invoke! m-rpc-method ctx [method (object-array args)]))
+
+(defn rpc-in
+  "Dispatch a durable function remotely from inside a workflow.
+
+   Args:
+   ctx  - Resonate Context, the first argument of the calling durable function.
+   ?ref - Something coerceable into a durable ref.
+   & args - Arguments to pass to the durable ref.
+
+   Takes no ID: child IDs come from call order, which is what makes replay deterministic.
+   Returns a ResonateFuture, settled with `await`.
+
+   Where `run-in` can reach an unregistered function by Method, `rpc-in` cannot: the name
+   and version are what travel, so a var or fn must be registered here even though the
+   callee runs elsewhere."
+  ^Context$ResonateFuture [^Context ctx ?ref & args]
+  (let [?ref (coerce ?ref)]
+    (cond
+      (string? ?ref) (.rpc ctx ?ref (object-array args))
+      (fn? ?ref) (let [method (method-of ?ref)]
+                   (check-arity! method args)
+                   (rpc-method ctx method args))
+      :else (throw (ex-info "Ctx dispatch failed" {:ref ?ref})))))
+
+(defn await
+  "Block for a child's value. Already Clojure data: the SDK decodes through our own reader."
+  [^Context$ResonateFuture f] (.await f))
+
+(defn result
+  "Block for a run's value. Already Clojure data: the SDK decodes through our own reader."
+  [^Handle$ResonateHandle h] (.result h))
 
 
 ;; -- defdurable ---------------------------------------------------------------
