@@ -12,7 +12,7 @@
 (defn format-greeting
   "A leaf function: computation only, no durable operations of its own."
   [_ name]
-  (str "hello, " name))
+  (str "hello, " name "!"))
 
 (defn greeter-workflow
   "A workflow: orchestrates children through ctx. Replays from the top on resume,
@@ -28,7 +28,8 @@
   [f]
   (let [engine (r/->Resonate {:url url})]
     (try
-      (r/register engine #'format-greeting {:retry (Retry$Never.)})
+      (r/register engine #'format-greeting {:name "format-greeting"
+                                            :retry (Retry$Never.)})
       (r/register engine #'greeter-workflow)
       (binding [*resonate* engine] (f))
       (finally (r/stop! engine)))))
@@ -37,8 +38,8 @@
 
 (deftest workflow-with-child
   (testing "a workflow dispatches a child through ctx and awaits it"
-    (is (= "hello, Ada"
-           (-> (r/run-new *resonate* #'greeter-workflow "Ada")
+    (is (= "hello, Ada!"
+           (-> (r/run *resonate* (r/id "greet-") #'greeter-workflow "Ada")
                (r/result))))))
 
 (deftest same-id-rejoins
@@ -46,17 +47,17 @@
     (let [id (r/id "greet")
           once (-> (r/run *resonate* id #'format-greeting "first") (r/result))
           twice (-> (r/run *resonate* id #'format-greeting "second") (r/result))]
-      (is (= "hello, first" once))
+      (is (= "hello, first!" once))
       (is (= once twice) "the second run must rejoin the existing promise"))))
 
 (deftest name-resolution
   (testing "a run can name its target by string"
-    (is (= "hello, by-name"
-           (-> (r/run *resonate* (r/id) "resonate.greeter-test/format-greeting" "by-name")
+    (is (= "hello, by-name!"
+           (-> (r/run *resonate* (r/id) "format-greeting" "by-name")
                (r/result))))))
 
 (deftest method-resolution 
   (testing "a run can refer to the fn itself"
-    (is (= "hello, by-fn"
+    (is (= "hello, by-fn!"
            (-> (r/run *resonate* (r/id) greeter-workflow "by-fn")
                (r/result))))))

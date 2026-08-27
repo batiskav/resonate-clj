@@ -22,7 +22,7 @@
   (r/register R #'g/greeter-workflow)
   
   (try 
-    (-> (r/run-new R #'g/greeter-workflow "Echo")
+    (-> (r/run R (r/id "greet-") #'g/greeter-workflow "Echo")
         (r/result))
     (catch Exception e
       (.printStackTrace e)))
@@ -31,7 +31,5 @@
   
   (repl/clear)
   (repl/refresh-all)
-
-  (r/method-of #'g/greeter-workflow) 
 
   )

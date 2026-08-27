@@ -227,9 +227,9 @@
   [^Resonate r] (.stop r))
 
 (defn id
-  "Generate a random UUID as String."
-  ([] (str (random-uuid)))
-  ([prefix] (str prefix "-" (random-uuid))))
+  "Make a run ID from system nano time."
+  ([] (id "run-"))
+  ([prefix] (str prefix "-" (System/nanoTime))))
 
 (defn run-resolved
   [^Resonate R id name version args]
@@ -278,8 +278,6 @@
                    (check-arity! method args)
                    (run-method ctx method args))
       :else (throw (ex-info "Ctx dispatch failed}" {:ref ?ref})))))
-
-(defn run-new [^Resonate r ?ref & args] (apply (partial run r (id) ?ref) args))
 
 (defn await [^Context$ResonateFuture f] (.await f))
 (defn result [^Handle$ResonateHandle h] (.result h))
