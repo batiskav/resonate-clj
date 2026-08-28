@@ -27,6 +27,10 @@ deploy:
 # Start a REPL
 repl:
     clojure -M:dev:test
+    
+# Run clojure-mcp for claude code to connect to
+clojure-mcp:
+    clojure -Tmcp start :config-profile :cli-assist
 
 # Start Docker compose
 up: 

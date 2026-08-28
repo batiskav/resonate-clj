@@ -1,10 +1,10 @@
 (ns resonate.serialization-test
   "The wire codec, exercised directly.
 
-  Loading `resonate.resonate` registers jsonista's Clojure codec on the SDK's own
+  Loading `resonate.codec` registers jsonista's Clojure codec on the SDK's own
   `Codec/MAPPER`, so these run against the real encoder and decoder every payload goes
   through -- arguments, return values and errors alike. No server required."
-  (:require [resonate.resonate]
+  (:require [resonate.codec]
             [clojure.test :refer [deftest is testing]])
   (:import [io.resonatehq.resonate Codec Codec$NoopEncryptor]
            [java.util Base64]))
@@ -88,7 +88,8 @@
 
 (deftest error-envelope-keys-stay-strings
   (testing "the SDK reads its own error envelope back with String keys, so keywordizing one
-            would cost a rejected promise its cause; those three names are reserved"
+            would cost a rejected promise its cause; the whole map is recognised by its
+            `__type` marker rather than by reserving key names"
     (let [envelope {"__type" "error"
                     "message" "boom"
                     "__java_serialized" "rO0ABXNy"}
@@ -97,7 +98,17 @@
       (is (= "boom" (.get ^java.util.Map decoded "message"))
           "Codec/deserializeError looks the message up by String key"))))
 
-(deftest reserved-names-only-apply-to-those-keys
-  (testing "everything else keywordizes as usual, including keys that merely look internal"
+(deftest ordinary-maps-are-never-string-keyed
+  (testing "a `:message` key is ordinary application data -- it must survive as a keyword.
+            Discriminating per key name instead of per map would silently break this, and
+            `{:message ...}` is far too common a shape for that"
+    (is (= {:message "hi" :other 1} (round-trip {:message "hi" :other 1})))
+    (is (= {:a {:message "deep"}} (round-trip {:a {:message "deep"}})))
+    (is (= {:__java_serialized "x"} (round-trip {:__java_serialized "x"})))
     (is (= {:type "x" :messages ["a"] :__other 1}
            (round-trip {:type "x" :messages ["a"] :__other 1})))))
+
+(deftest only-the-error-marker-triggers-string-keys
+  (testing "a map carrying some other __type is ordinary data and keywordizes as usual"
+    (is (= {:__type "other" :message "kept"}
+           (round-trip {:__type "other" :message "kept"})))))

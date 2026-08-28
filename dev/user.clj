@@ -1,16 +1,15 @@
 (ns user
   "REPL entry point."
   (:require
-   [clojure.repl.deps :as deps]
-   [clojure.test :as test]
+   [clojure.repl.deps :as deps] [clojure.test :as test]
    [clojure.tools.namespace.repl :as repl]
    [resonate.resonate :as r]
-   [resonate.greeter-test :as g])
-  (:import 
-   [io.resonatehq.resonate Retry$Never]))
+   [resonate.greeter-test :as g]))
 
 (comment 
   
+  (require '[resonate.interop :as i] :reload)
+  (require '[resonate.codec :as c] :reload)
   (require '[resonate.resonate :as r] :reload)
   (require '[resonate.greeter-test :as g] :reload)
   (require '[resonate.serialization-test] :reload)
@@ -20,18 +19,31 @@
   
   (def R (r/start! {:url "http://localhost:8001"}))
   (r/register R #'g/format-greeting)
-  (r/register R #'g/greeter-workflow)
-
-  (try
-    (-> (r/rpc R (r/id "greet-") #'g/greeter-workflow {:a 123})
-        (r/result))
-    (catch Exception e
-      (.printStackTrace e)))
+  (r/register R #'g/greeter-workflow {:name :greeter})
+  
+  (-> (r/run! R (r/id "test-") #'g/greeter-workflow "Echo, var")
+      (r/result)) 
+  
+  (-> (r/run! R (r/id "test-") g/greeter-workflow "Echo, fn")
+      (r/result)) 
+  
+  (-> (r/run! R (r/id "test-") :greeter "Echo, keyword")
+      (r/result)) 
+  
+  (-> (r/run! R (r/id "test-") "greeter" "Echo, string")
+      (r/result)) 
+  
+  (-> (r/rpc! R (r/id "test-") "greeter" "Echo, string")
+      (r/result))
   
   (r/stop! R)
   
-  (repl/clear)
-  (repl/refresh-all)
+  (repl/clear) 
+  
+  (try
+    (repl/refresh-all)
+    (catch Exception e
+      (.printStackTrace e)))
 
   (deps/sync-deps)
 
