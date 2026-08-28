@@ -24,9 +24,10 @@ Very early alpha stage, no guarantees.
 
 ## Roadmap
 
-- Make builds available on [Clojars](https://clojars.org/).
+- Proper build pipeline, make builds available on [Clojars](https://clojars.org/).
 - Clojure macro `defdurable` that enables auto-registration of durable functions.
 - Non-trivial example web app with HITL workflow simulation.
+- Non-trivial example with heterogeneous services (Clojure, Python).
 - Non-trivial example with durable loop interpreting behaviour defined in a DSL ([BThreads](https://thomascothran.tech/2024/10/a-new-paradigm/), [Statecharts](https://github.com/fulcrologic/statecharts), etc).
 
 ## License
