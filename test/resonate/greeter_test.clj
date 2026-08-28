@@ -3,8 +3,9 @@
 
   Smoke test against a local Resonate instance (docker compose up), exercising the
   library through its own wrapper functions rather than raw interop."
-  (:require [resonate.core :as r]
-            [clojure.test :refer [deftest is use-fixtures testing]])
+  (:require 
+   [clojure.test :refer [deftest is use-fixtures testing]]
+   [resonate.core :as r])
   (:import [io.resonatehq.resonate Retry$Never]))
 
 (def url "http://localhost:8001")
@@ -12,7 +13,7 @@
 (defn format-greeting
   "A leaf function: computation only, no durable operations of its own."
   [_ name]
-  (str "hello, " name "!"))
+  (str "Hello, " name "!"))
 
 (defn greeter-workflow
   "A workflow: orchestrates children through ctx. Replays from the top on resume,
@@ -46,7 +47,7 @@
 
 (deftest workflow-with-child
   (testing "a workflow dispatches a child through ctx and awaits it"
-    (is (= "hello, Ada!"
+    (is (= "Hello, Ada!"
            (-> (r/run! *resonate* (r/id "greet-") #'greeter-workflow "Ada")
                (r/result))))))
 
@@ -55,18 +56,18 @@
     (let [id (r/id "greet")
           once (-> (r/run! *resonate* id #'format-greeting "first") (r/result))
           twice (-> (r/run! *resonate* id #'format-greeting "second") (r/result))]
-      (is (= "hello, first!" once))
+      (is (= "Hello, first!" once))
       (is (= once twice) "the second run must rejoin the existing promise"))))
 
 (deftest name-resolution
   (testing "a run can name its target by string"
-    (is (= "hello, by-name!"
+    (is (= "Hello, by-name!"
            (-> (r/run! *resonate* (r/id) "format-greeting" "by-name")
                (r/result))))))
 
 (deftest method-resolution 
   (testing "a run can refer to the fn itself"
-    (is (= "hello, by-fn!"
+    (is (= "Hello, by-fn!"
            (-> (r/run! *resonate* (r/id) greeter-workflow "by-fn")
                (r/result))))))
 
@@ -78,19 +79,19 @@
 
 (deftest rpc-by-var
   (testing "rpc dispatches a registered function named by its var"
-    (is (= "hello, Echo!"
+    (is (= "Hello, Echo!"
            (-> (r/rpc! *resonate* (r/id "rpc-") #'format-greeting "Echo")
                (r/result))))))
 
 (deftest rpc-by-name
   (testing "rpc takes a String, which need not be registered locally to be dispatched"
-    (is (= "hello, by-name!"
+    (is (= "Hello, by-name!"
            (-> (r/rpc! *resonate* (r/id) "format-greeting" "by-name")
                (r/result))))))
 
 (deftest rpc-in-child
   (testing "a workflow dispatches a child over the wire and awaits it"
-    (is (= "hello, Echo!"
+    (is (= "Hello, Echo!"
            (-> (r/run! *resonate* (r/id) #'rpc-workflow "Echo")
                (r/result))))))
 
@@ -99,7 +100,7 @@
     (let [id (r/id "rpc-rejoin")
           once (-> (r/rpc! *resonate* id #'format-greeting "first") (r/result))
           twice (-> (r/rpc! *resonate* id #'format-greeting "second") (r/result))]
-      (is (= "hello, first!" once))
+      (is (= "Hello, first!" once))
       (is (= once twice)))))
 
 (deftest rpc-unregistered-fn-is-rejected

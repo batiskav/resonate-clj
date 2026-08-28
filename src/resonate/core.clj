@@ -81,11 +81,14 @@
    already registered -- re-evaluating a `defn` and registering it again counts."
   (^Resonate [^Resonate R ?ref] (register R ?ref nil))
   (^Resonate [^Resonate R ?ref & {:keys [name version retry replace?] 
-                                  :or {version 1} :as _opts}]
+                                  :or {version 1} :as _opts}] 
    (let [method (method-of ?ref)
          name (cond (keyword? name) (kw->str name)
                     (string? name) name
                     :else (fq-name ?ref))]
+     (when (and (fn? ?ref) (nil? name))
+       (throw (ex-info "Pass var instead of fn or provide explicit :name."
+                       {:ref ?ref :name name})))
      (when replace? (unregister R name version))
      (i/register R name method version retry)
      R)))
