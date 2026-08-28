@@ -1,0 +1,93 @@
+{
+  "title": "Resonate & Postgres",
+  "uid": "resonate-postgres",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "10s",
+  "panels": [
+    { "id": 100, "type": "row", "title": "Resonate", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+
+    {
+      "id": 1, "type": "timeseries", "title": "Promise throughput",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheusds" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheusds" },
+          "expr": "sum(rate(promises_total[5m]))", "legendFormat": "promises/s" }
+      ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Tasks by state",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheusds" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheusds" },
+          "expr": "sum by (state) (tasks_total)", "legendFormat": "{{state}}" }
+      ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Coroutines in flight",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheusds" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheusds" },
+          "expr": "sum by (type) (coroutines_in_flight)", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "AIO submission rate (success)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheusds" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheusds" },
+          "expr": "sum by (type) (rate(aio_total_submissions{status=\"success\"}[5m]))", "legendFormat": "{{type}}" }
+      ]
+    },
+
+    { "id": 200, "type": "row", "title": "Postgres", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 } },
+
+    {
+      "id": 5, "type": "stat", "title": "Postgres up",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheusds" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheusds" },
+          "expr": "pg_up", "legendFormat": "up" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Active connections",
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheusds" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheusds" },
+          "expr": "pg_stat_database_numbackends{datname=\"resonate\"}", "legendFormat": "backends" }
+      ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Transaction rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "prometheusds" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheusds" },
+          "expr": "rate(pg_stat_database_xact_commit{datname=\"resonate\"}[5m])", "legendFormat": "commits/s" },
+        { "datasource": { "type": "prometheus", "uid": "prometheusds" },
+          "expr": "rate(pg_stat_database_xact_rollback{datname=\"resonate\"}[5m])", "legendFormat": "rollbacks/s" }
+      ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Cache hit ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "prometheusds" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 }, "overrides": [] },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheusds" },
+          "expr": "sum(rate(pg_stat_database_blks_hit{datname=\"resonate\"}[5m])) / (sum(rate(pg_stat_database_blks_hit{datname=\"resonate\"}[5m])) + sum(rate(pg_stat_database_blks_read{datname=\"resonate\"}[5m])))",
+          "legendFormat": "hit ratio" }
+      ]
+    }
+  ]
+}
