@@ -13,7 +13,7 @@ Very early alpha stage, no guarantees.
 (def R (r/start! {:url "http://localhost:8001"}))
 (r/register R #'g/format-greeting)
 (r/register R #'g/greeter-workflow {:name :wf/greeter})
-
+the ruins
 (-> (r/run! R (r/id "test-") :wf/greeter "Echo")
     (r/result))
 ;; => "Hello, Echo!"
@@ -25,7 +25,7 @@ Very early alpha stage, no guarantees.
 ## Roadmap
 
 - Proper build pipeline, make builds available on [Clojars](https://clojars.org/).
-- Clojure macro `defdurable` that enables auto-registration of durable functions.
+- Clojure macro `defdurable` colocating functions with registration params, enable discovering durable fns.
 - Non-trivial example web app with HITL workflow simulation.
 - Non-trivial example with heterogeneous services (Clojure, Python).
 - Non-trivial example with durable loop interpreting behaviour defined in a DSL ([BThreads](https://thomascothran.tech/2024/10/a-new-paradigm/), [Statecharts](https://github.com/fulcrologic/statecharts), etc).
