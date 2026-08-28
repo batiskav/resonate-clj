@@ -3,7 +3,7 @@
 
   Smoke test against a local Resonate instance (docker compose up), exercising the
   library through its own wrapper functions rather than raw interop."
-  (:require [resonate.resonate :as r]
+  (:require [resonate.core :as r]
             [clojure.test :refer [deftest is use-fixtures testing]])
   (:import [io.resonatehq.resonate Retry$Never]))
 

@@ -3,14 +3,14 @@
   (:require
    [clojure.repl.deps :as deps] [clojure.test :as test]
    [clojure.tools.namespace.repl :as repl]
-   [resonate.resonate :as r]
+   [resonate.core :as r]
    [resonate.greeter-test :as g]))
 
 (comment 
   
   (require '[resonate.interop :as i] :reload)
   (require '[resonate.codec :as c] :reload)
-  (require '[resonate.resonate :as r] :reload)
+  (require '[resonate.core :as r] :reload)
   (require '[resonate.greeter-test :as g] :reload)
   (require '[resonate.serialization-test] :reload)
 

@@ -1,4 +1,4 @@
-(ns resonate.resonate
+(ns resonate.core
   (:refer-clojure :exclude [await promise run!]) 
   (:require
    [clojure.string :as str]
