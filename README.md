@@ -1,6 +1,7 @@
 # resonate-clj
-
 Clojure wrapper for the [Resonate Java SDK](https://docs.resonatehq.io/develop/java).
+
+Very early alpha stage, no guarantees.
 
 ## Example
 
@@ -23,6 +24,7 @@ Clojure wrapper for the [Resonate Java SDK](https://docs.resonatehq.io/develop/j
 
 ## Roadmap
 
+- Make builds available on [Clojars](https://clojars.org/).
 - Clojure macro `defdurable` that enables auto-registration of durable functions.
 - Non-trivial example web app with HITL workflow simulation.
 - Non-trivial example with durable loop interpreting behaviour defined in a DSL ([BThreads](https://thomascothran.tech/2024/10/a-new-paradigm/), [Statecharts](https://github.com/fulcrologic/statecharts), etc).
